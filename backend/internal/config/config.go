@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
@@ -11,10 +12,11 @@ import (
 )
 
 type Config struct {
-	Primary  Primary        `koanf:"primary" validate:"required"`
-	Server   ServerConfig   `koanf:"server" validate:"required"`
-	Database DatabaseConfig `koanf:"database" validate:"required"`
-	Auth     AuthConfig     `koanf:"auth" validate:"required"`
+	Primary       Primary              `koanf:"primary" validate:"required"`
+	Server        ServerConfig         `koanf:"server" validate:"required"`
+	Database      DatabaseConfig       `koanf:"database" validate:"required"`
+	Auth          AuthConfig           `koanf:"auth" validate:"required"`
+	Observability *ObservabilityConfig `koanf:"observability"`
 }
 
 type Primary struct {
@@ -68,6 +70,27 @@ func LoadConfig() (*Config, error) {
 	err = k.Unmarshal("", mainConfig)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("could not unmarshal main config")
+	}
+
+	validate := validator.New()
+
+	err = validate.Struct(mainConfig)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("config validation failed")
+	}
+
+	// Set default observability config if not provided
+	if mainConfig.Observability == nil {
+		mainConfig.Observability = DefaultObservabilityConfig()
+	}
+
+	// Override service name and environment from primary config
+	mainConfig.Observability.ServiceName = "boilerplate"
+	mainConfig.Observability.Environment = mainConfig.Primary.Env
+
+	// Validate observability config
+	if err := mainConfig.Observability.Validate(); err != nil {
+		logger.Fatal().Err(err).Msg("invalid observability config")
 	}
 
 	return mainConfig, nil
